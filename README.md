@@ -129,6 +129,46 @@ Organiser ton code de manière claire avec les dossiers :
 
 ---
 
+## 🧩 Étape 2bis – Implémenter un CRUD complet  
+
+### Objectif  
+Avant d’ajouter l’authentification, il est important de rendre l’API pleinement fonctionnelle avec un **CRUD complet** pour les utilisateurs et les posts.  
+Cette étape te permettra de pratiquer la logique MVC et la manipulation des données avec MySQL.
+
+### Guidelines  
+
+1. **Créer les modèles (`UserModel`, `PostModel`)**  
+   - Définir les fonctions pour **créer, lire, mettre à jour et supprimer** des enregistrements.  
+   - Pour chaque modèle, prévoir des fonctions : `create`, `getById`, `getAll`, `update`, `delete`.  
+   - Vérifier les types et la validation de données avant de les envoyer à MySQL.
+
+2. **Créer les contrôleurs (`UserController`, `PostController`)**  
+   - Appeler les fonctions du modèle et gérer les réponses HTTP.  
+   - Prévoir des statuts corrects : 200 (OK), 201 (Created), 404 (Not Found), 500 (Erreur serveur).  
+   - Ajouter des messages clairs pour chaque réponse.
+
+3. **Définir les routes REST (`UserRoutes`, `PostRoutes`)**  
+   - Routes principales :  
+     ```
+     POST /api/users      # créer un utilisateur
+     GET /api/users/:id   # récupérer un utilisateur
+     PUT /api/users/:id   # mettre à jour
+     DELETE /api/users/:id# supprimer
+     GET /api/users       # liste tous les utilisateurs
+     ```
+   - Idem pour les posts : `POST /api/posts`, `GET /api/posts/:id`, etc.  
+   - Utiliser des **noms clairs et cohérents** pour les endpoints.
+
+4. **Tester le CRUD**  
+   - Utiliser Postman ou Insomnia pour tester toutes les routes.  
+   - Vérifier que les données sont correctement enregistrées, récupérées, mises à jour et supprimées.  
+
+### 💡 Mini-défi  
+- Ajoute un champ `created_at` pour chaque table (`users` et `posts`) et fais en sorte qu’il soit renvoyé par toutes les routes GET.  
+- Réfléchis à : pourquoi est-il important de séparer clairement les routes POST, GET, PUT, DELETE dans une API REST ?  
+
+---
+
 ## 🔐 Étape 3 – Authentification avec JWT  
 
 ### Objectif  
