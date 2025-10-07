@@ -1,4 +1,4 @@
-remote_theme: WildCodeSchool/workshops-jekyll-theme
+remote_theme: Brian-boudrioux/workshops-jekyll-theme
 
 titles_from_headings:
   enabled: false
