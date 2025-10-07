@@ -1,4 +1,3 @@
-# 🎯 Objectif général  
 Dans ce workshop, tu vas apprendre à construire pas à pas une **API REST complète** avec **Express** et **MySQL** pour un **réseau social interne** destiné aux étudiants et intervenants de *MyDigitalSchool*.  
 
 Le projet servira de fil conducteur pour introduire progressivement :  
