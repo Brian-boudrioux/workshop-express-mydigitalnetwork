@@ -190,23 +190,20 @@ npm install argon2 jsonwebtoken
 
 ### 🧱 2. Modèle utilisateur – `AuthModel.js`
 
-Exemple de modèle de base :
+Le modèle doit permettre de :
+- Créer un utilisateur avec un mot de passe hashé.
+- Trouver un utilisateur par son email.
+
+Exemple d’approche :
 
 ```js
-// models/AuthModel.js
-import db from "../config/db.js";
-
+// Pseudo-exemple
 export const createUser = async (email, passwordHash) => {
-  const [result] = await db.query(
-    "INSERT INTO users (email, password) VALUES (?, ?)",
-    [email, passwordHash]
-  );
-  return result.insertId;
+  // Insertion SQL : INSERT INTO users (email, password) VALUES (?, ?)
 };
 
 export const findUserByEmail = async (email) => {
-  const [[user]] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
-  return user;
+  // Requête SQL : SELECT * FROM users WHERE email = ?
 };
 ```
 
@@ -222,105 +219,82 @@ Ce fichier contient deux fonctions principales :
 
 #### ➕ a. Inscription d’un utilisateur
 
+1. **Récupérer les données** envoyées dans le corp de la requette (email, mot de passe).
+2. **Vérifier si l’utilisateur existe déjà**.
+3. **Hasher le mot de passe** avec Argon2 :
+
 ```js
-// controllers/AuthController.js
-import argon2 from "argon2";
-import jwt from "jsonwebtoken";
-import { createUser, findUserByEmail } from "../models/AuthModel.js";
-
-export const register = async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    // Vérifier si l’utilisateur existe déjà
-    const existingUser = await findUserByEmail(email);
-    if (existingUser) {
-      return res.status(400).json({ message: "Utilisateur déjà existant" });
-    }
-
-    // Hasher le mot de passe avec Argon2
-    const hashedPassword = await argon2.hash(password);
-
-    // Créer l’utilisateur en BDD
-    const userId = await createUser(email, hashedPassword);
-
-    res.status(201).json({
-      message: "Utilisateur créé avec succès",
-      userId,
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Erreur lors de l'inscription" });
-  }
-};
+const hashedPassword = await argon2.hash(password);
 ```
+
+4. **Enregistrer le nouvel utilisateur** avec le mot de passe hashé.
+5. **Retourner un message de succès**.
 
 ---
 
 #### 🗝️ b. Connexion utilisateur
 
-```js
-export const login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
+1. **Chercher l’utilisateur** en base à partir de son email.  
+   Exemple :
 
-    // Étape 1 : vérifier si l’utilisateur existe
-    const user = await findUserByEmail(email);
-    if (!user) {
-      return res.status(404).json({ message: "Utilisateur introuvable" });
-    }
+   ```js
+   const user = await findUserByEmail(email);
+   if (!user) {
+     // utilisateur introuvable
+   }
+   ```
 
-    // Étape 2 : vérifier que le mot de passe correspond
-    const isPasswordValid = await argon2.verify(user.password, password);
-    if (!isPasswordValid) {
-      return res.status(401).json({ message: "Mot de passe incorrect" });
-    }
+2. **Comparer le mot de passe envoyé** avec celui hashé en base :  
 
-    // Étape 3 : générer le token JWT contenant l'id de l'utilisateur
-    const token = jwt.sign(
-      { id: user.id, email: user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: "1h" }
-    );
+   ```js
+   const isPasswordValid = await argon2.verify(user.password, password);
+   if (!isPasswordValid) {
+     // mot de passe incorrect
+   }
+   ```
 
-    // Étape 4 : renvoyer le token dans les headers + message JSON
-    res
-      .header("Authorization", `Bearer ${token}`)
-      .json({ message: "Connexion réussie", token });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Erreur lors de la connexion" });
-  }
-};
-```
+3. **Générer un token JWT** contenant l’identifiant de l’utilisateur :
+
+   ```js
+   const token = jwt.sign(
+     { id: user.id, email: user.email },
+     process.env.JWT_SECRET,
+     { expiresIn: "1h" }
+   );
+   ```
+
+4. **Renvoyer le token** dans la réponse (par exemple dans les headers) :
+
+   ```js
+   res.header("Authorization", `Bearer ${token}`);
+   ```
 
 ---
 
 ### 🔒 4. Middleware de vérification du token – `verifyToken.js`
 
-Ce middleware protège les routes privées en vérifiant la présence et la validité du token JWT.
+Le but est de **protéger certaines routes** en vérifiant le token JWT.
 
-```js
-// middlewares/isAuth.js
-import jwt from "jsonwebtoken";
+Étapes principales :
 
-export const isAuth = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  const token = authHeader && authHeader.split(" ")[1];
+1. **Récupérer le token** dans les headers :
 
-  if (!token) {
-    return res.status(403).json({ message: "Aucun token fourni" });
-  }
+   ```js
+   const token = req.headers.authorization?.split(" ")[1];
+   ```
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-    if (err) {
-      return res.status(401).json({ message: "Token invalide ou expiré" });
-    }
-    req.user = decoded; // contient l'id et l'email
-    next();
-  });
-};
-```
+2. **Vérifier la validité du token** :
+
+   ```js
+   jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+     if (err) {
+       // Token invalide ou expiré
+     }
+   });
+   ```
+
+3. **Stocker les infos du token** (id, email) dans `req.user` pour y accéder dans les routes protégées.
+
 
 ---
 
