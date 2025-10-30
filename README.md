@@ -168,37 +168,242 @@ Cette étape te permettra de pratiquer la logique MVC et la manipulation des don
 
 ---
 
-## 🔐 Étape 3 – Authentification avec JWT  
+## 🔐 Étape 3 – Authentification avec JWT et Argon2
 
-### Objectif  
-Permettre aux utilisateurs de s’inscrire, se connecter et accéder à des routes protégées.
+### 🎯 Objectif  
+Permettre aux utilisateurs de **s’inscrire**, **se connecter** et **accéder à des routes protégées** en toute sécurité.
 
-### Étapes  
-1. Installer les dépendances :
-   ```bash
-   npm install bcrypt jsonwebtoken
-   ```
-2. Créer un modèle `AuthModel.js` avec création et recherche d’utilisateur.
-3. Ajouter un `AuthController.js` :
-   - `register()` → hash du mot de passe avec bcrypt
-   - `login()` → vérification du mot de passe, génération d’un token JWT
-4. Créer un middleware `verifyToken.js` :
-   ```js
-   import jwt from "jsonwebtoken";
-   export const verifyToken = (req, res, next) => {
-     const token = req.headers.authorization?.split(" ")[1];
-     if (!token) return res.status(403).json({ message: "No token" });
-     jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-       if (err) return res.status(401).json({ message: "Invalid token" });
-       req.user = user;
-       next();
-     });
-   };
-   ```
+---
 
-### 💡 Mini-défi  
-- Pourquoi stocker le mot de passe haché plutôt qu’en clair ?  
-- Quelle différence entre un cookie de session et un JWT ?  
+### ⚙️ 1. Installation des dépendances
+
+Installe les bibliothèques nécessaires :
+
+```bash
+npm install argon2 jsonwebtoken
+```
+
+👉 `argon2` permet de **hasher et vérifier les mots de passe** de manière sécurisée.  
+👉 `jsonwebtoken` permet de **générer et vérifier les tokens d’accès** pour les routes protégées.
+
+---
+
+### 🧱 2. Modèle utilisateur – `AuthModel.js`
+
+Exemple de modèle de base :
+
+```js
+// models/AuthModel.js
+import db from "../config/db.js";
+
+export const createUser = async (email, passwordHash) => {
+  const [result] = await db.query(
+    "INSERT INTO users (email, password) VALUES (?, ?)",
+    [email, passwordHash]
+  );
+  return result.insertId;
+};
+
+export const findUserByEmail = async (email) => {
+  const [[user]] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
+  return user;
+};
+```
+
+---
+
+### 🧑‍💻 3. Contrôleur d’authentification – `AuthController.js`
+
+Ce fichier contient deux fonctions principales :
+- **`register()`** : inscription d’un utilisateur avec hash du mot de passe via Argon2.  
+- **`login()`** : connexion avec vérification du mot de passe et génération d’un token JWT contenant l’`id` utilisateur.
+
+---
+
+#### ➕ a. Inscription d’un utilisateur
+
+```js
+// controllers/AuthController.js
+import argon2 from "argon2";
+import jwt from "jsonwebtoken";
+import { createUser, findUserByEmail } from "../models/AuthModel.js";
+
+export const register = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Vérifier si l’utilisateur existe déjà
+    const existingUser = await findUserByEmail(email);
+    if (existingUser) {
+      return res.status(400).json({ message: "Utilisateur déjà existant" });
+    }
+
+    // Hasher le mot de passe avec Argon2
+    const hashedPassword = await argon2.hash(password);
+
+    // Créer l’utilisateur en BDD
+    const userId = await createUser(email, hashedPassword);
+
+    res.status(201).json({
+      message: "Utilisateur créé avec succès",
+      userId,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Erreur lors de l'inscription" });
+  }
+};
+```
+
+---
+
+#### 🗝️ b. Connexion utilisateur
+
+```js
+export const login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Étape 1 : vérifier si l’utilisateur existe
+    const user = await findUserByEmail(email);
+    if (!user) {
+      return res.status(404).json({ message: "Utilisateur introuvable" });
+    }
+
+    // Étape 2 : vérifier que le mot de passe correspond
+    const isPasswordValid = await argon2.verify(user.password, password);
+    if (!isPasswordValid) {
+      return res.status(401).json({ message: "Mot de passe incorrect" });
+    }
+
+    // Étape 3 : générer le token JWT contenant l'id de l'utilisateur
+    const token = jwt.sign(
+      { id: user.id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+
+    // Étape 4 : renvoyer le token dans les headers + message JSON
+    res
+      .header("Authorization", `Bearer ${token}`)
+      .json({ message: "Connexion réussie", token });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Erreur lors de la connexion" });
+  }
+};
+```
+
+---
+
+### 🔒 4. Middleware de vérification du token – `verifyToken.js`
+
+Ce middleware protège les routes privées en vérifiant la présence et la validité du token JWT.
+
+```js
+// middlewares/isAuth.js
+import jwt from "jsonwebtoken";
+
+export const isAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(" ")[1];
+
+  if (!token) {
+    return res.status(403).json({ message: "Aucun token fourni" });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(401).json({ message: "Token invalide ou expiré" });
+    }
+    req.user = decoded; // contient l'id et l'email
+    next();
+  });
+};
+```
+
+---
+
+### 🚀 5. Exemple d’utilisation dans une route protégée
+
+```js
+// routes/UserRoutes.js
+import express from "express";
+import { isAuth } from "../middlewares/isAuth.js";
+
+const router = express.Router();
+
+router.get("/profile", isAuth, async (req, res) => {
+  res.json({
+    message: "Accès autorisé à la route protégée",
+    user: req.user,
+  });
+});
+
+export default router;
+```
+
+---
+
+### 🧪 6. Exemple de test via Postman ou cURL
+
+#### 🔸 Inscription
+
+```bash
+POST /register
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "MonSuperMotDePasse"
+}
+```
+
+#### 🔸 Connexion
+
+```bash
+POST /login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "MonSuperMotDePasse"
+}
+```
+
+**Réponse :**
+
+```json
+{
+  "message": "Connexion réussie",
+  "token": "eyJhbGciOiJIUzI1..."
+}
+```
+
+#### 🔸 Route protégée
+
+```bash
+GET /profile
+Authorization: Bearer <votre_token>
+```
+
+---
+
+### ✅ 7. Résumé des bonnes pratiques
+
+- Utiliser **Argon2** pour le hash des mots de passe (plus sûr que bcrypt).  
+- Ne jamais stocker les mots de passe en clair.  
+- Définir une variable d’environnement `JWT_SECRET` forte et unique.  
+- Renvoyer le token via les **headers** pour plus de sécurité.  
+- Ajouter une **expiration courte** du token (`1h` par exemple).  
+
+---
+
+### 💡 8. Pour aller plus loin
+
+- Implémente un **système de refresh token** pour renouveler l’accès sans reconnecter.  
+- Ajoute une **gestion des rôles utilisateurs (admin, user, etc.)**.  
+- Protège certaines routes selon le rôle stocké dans le token.  
 
 ---
 
