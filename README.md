@@ -271,7 +271,7 @@ const hashedPassword = await argon2.hash(password);
 
 ---
 
-### 🔒 4. Middleware de vérification du token – `verifyToken.js`
+### 🔒 4. Middleware de vérification du token – `isAuth.js`
 
 Le but est de **protéger certaines routes** en vérifiant le token JWT.
 
