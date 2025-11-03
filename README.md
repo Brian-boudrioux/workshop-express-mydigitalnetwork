@@ -381,7 +381,7 @@ Authorization: Bearer <votre_token>
 
 ---
 
-## 🧪 Étape 6 – Tests d’intégration avec Jest et Supertest
+## 🧪 Étape 4 – Tests d’intégration avec Jest et Supertest
 
 ### 🎯 Objectif  
 Apprendre à **tester une API Express** connectée à une **base de données** avec **Jest** et **Supertest**.
