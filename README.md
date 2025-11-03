@@ -457,6 +457,8 @@ describe("🧪 Tests d'intégration de l'API Users", () => {
   beforeAll(async () => {
     // Nettoyer la base avant de commencer les tests
     await db.query("DELETE FROM users");
+    // réinitialiser les id en auto_increment pour s'assurer que les tests soit reproductible
+    await db.query("ALTER TABLE posts AUTO_INCREMENT = 1");
   });
 
   test("GET /users doit retourner un tableau d'utilisateurs", async () => {
@@ -490,6 +492,7 @@ Tester les routes :
 
 ##### 1. Préparer la base de test
 - Vide la table `posts` au début de la suite de tests (`beforeAll()`).
+- Réinitialiser les id en auto_increment pour s'assurer que les tests soit reproductible (`beforeAll()`).
 - Insère manuellement quelques articles de test (2 ou 3).
 
 ##### 2. Écrire le test pour `GET /posts`
