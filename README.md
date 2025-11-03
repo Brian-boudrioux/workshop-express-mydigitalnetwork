@@ -381,39 +381,174 @@ Authorization: Bearer <votre_token>
 
 ---
 
-## 🧪 Étape 4 – Tests avec Jest & Supertest  
+## 🧪 Étape 6 – Tests d’intégration avec Jest et Supertest
 
-### Objectif  
-Apprendre à tester ton API avec Jest pour la logique et Supertest pour les routes.
+### 🎯 Objectif  
+Apprendre à **tester une API Express** connectée à une **base de données** avec **Jest** et **Supertest**.
 
-### Étapes  
-1. Installer :
-   ```bash
-   npm install --save-dev jest supertest
-   ```
-2. Créer un fichier `tests/user.test.js` :
-   ```js
-   import request from "supertest";
-   import app from "../index.js";
+---
 
-   describe("GET /api/users", () => {
-     it("should return users", async () => {
-       const res = await request(app).get("/api/users");
-       expect(res.statusCode).toBe(200);
-     });
-   });
-   ```
-3. Ajouter dans `package.json` :
-   ```json
-   "scripts": {
-     "test": "jest --watchAll"
-   }
-   ```
+### ⚙️ 1. Installation des dépendances
 
-### 💡 Mini-défi  
-- Quelle différence entre un test unitaire et un test d’intégration ?  
-- Pourquoi tester ton API est-il crucial avant le déploiement ?  
+```bash
+npm install --save-dev jest supertest
+```
 
+Ajoute également `cross-env` si tu veux définir des variables d’environnement spécifiques aux tests :
+
+```bash
+npm install --save-dev cross-env
+```
+
+---
+
+### 🧱 2. Configuration du script de test
+
+Dans ton `package.json`, ajoute un script dédié :
+
+```json
+"scripts": {
+  "test": "cross-env NODE_ENV=test jest --runInBand"
+}
+```
+
+> `--runInBand` permet d’éviter les conflits de connexions simultanées à la base de données pendant les tests.
+
+---
+
+### 🧩 3. Base de données de test
+
+Crée une base spécifique pour les tests, par exemple `myapp_test`.
+
+Exemple de configuration MySQL dans `config/db.js` :
+
+```js
+import mysql from "mysql2/promise";
+
+const db = await mysql.createConnection({
+  host: process.env.DB_HOST,
+  port: process.env.DB_PORT,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.NODE_ENV === "test" ? "myapp_test" : process.env.DB_NAME
+});
+
+export default db;
+```
+
+💡 L’idée est d’utiliser une **BDD séparée** pour éviter d’écraser les données de production pendant les tests.
+
+---
+
+### 🧪 4. Exemple de test d’intégration – `users.test.js`
+
+Ce test illustre :
+- la création d’un serveur de test avec Supertest,
+- l’utilisation d’une **base temporaire de test**,
+- la **fermeture propre** de la connexion à la fin avec `afterAll()`.
+
+```js
+import request from "supertest";
+import app from "../app.js";       // ton application Express
+import db from "../config/db.js";  // ta connexion MySQL
+
+describe("🧪 Tests d'intégration de l'API Users", () => {
+
+  beforeAll(async () => {
+    // Nettoyer la base avant de commencer les tests
+    await db.query("DELETE FROM users");
+  });
+
+  test("GET /users doit retourner un tableau d'utilisateurs", async () => {
+    const res = await request(app).get("/users");
+    expect(res.statusCode).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  afterAll(async () => {
+    // Fermer proprement la connexion à la base après tous les tests
+    await db.end();
+  });
+});
+```
+
+---
+
+### 🧠 5. Mise en pratique : écrire des tests d’intégration pour les routes `/posts`
+
+C’est ton tour 🎯  
+Tu vas maintenant écrire des **tests d’intégration** pour les routes liées aux **articles (posts)** de ton API.
+
+#### Objectif
+Tester les routes :
+- `GET /posts` → Récupération de tous les articles  
+- `GET /posts/:id` → Récupération d’un article précis  
+
+---
+
+##### 🔹 Étapes suggérées
+
+##### 1. Préparer la base de test
+- Vide la table `posts` au début de la suite de tests (`beforeAll()`).
+- Insère manuellement quelques articles de test (2 ou 3).
+
+##### 2. Écrire le test pour `GET /posts`
+- Fais un appel avec Supertest à `GET /posts`.
+- Vérifie :
+  - que le statut de réponse est `200`,
+  - que la réponse est un **tableau**,
+  - et qu’il contient le bon **nombre d’articles** insérés.
+
+🧩 **Guide :**
+```js
+expect(res.statusCode).toBe(200);
+expect(Array.isArray(res.body)).toBe(true);
+expect(res.body.length).toBe(3);
+```
+
+##### 3. Écrire le test pour `GET /posts/:id`
+- Fais un appel à `GET /posts/1` (ou un ID existant).
+- Vérifie :
+  - que le statut de réponse est `200`,
+  - que la réponse contient un **objet unique**,
+  - et que les propriétés (`id`, `title`, `content`, etc.) sont présentes.
+
+🧩 **Guide :**
+```js
+expect(res.statusCode).toBe(200);
+expect(res.body).toHaveProperty("id");
+expect(res.body).toHaveProperty("title");
+```
+
+##### 4. Nettoyer après les tests
+- Ferme la connexion à la base de données avec `afterAll()` :
+  ```js
+  afterAll(async () => await db.end());
+  ```
+
+---
+
+#### 💡 Conseils
+
+- Utilise des **données cohérentes** entre les tests pour éviter les erreurs d’ID.  
+- Pense à **vider la BDD** avant chaque suite de tests pour un état propre.  
+- Exécute les tests avec :
+  ```bash
+  npm test
+  ```
+- Utilise des **describe()** séparés pour les différents groupes de routes (ex: `users`, `posts`, `comments`).
+
+---
+
+### ✅ Résultat attendu
+
+À la fin de cette mise en pratique, tu sauras :
+
+- Mettre en place une base de test dédiée.  
+- Écrire des tests d’intégration pour plusieurs routes (`GET /posts` et `GET /posts/:id`).  
+- Nettoyer ton environnement de test.  
+- Structurer une suite de tests robuste pour ton API Node.js.  
+  
 ---
 
 ## 💬 Étape 5 – Messagerie instantanée avec Socket.io  
