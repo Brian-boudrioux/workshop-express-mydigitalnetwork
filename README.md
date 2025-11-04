@@ -554,66 +554,473 @@ expect(res.body).toHaveProperty("title");
   
 ---
 
-## 💬 Étape 5 – Messagerie instantanée avec Socket.io  
+## 💬 Étape 5 – Messagerie instantanée avec Socket.io
 
-### Objectif  
-Permettre aux utilisateurs de discuter en temps réel.
-
-### Étapes  
-1. Installer :
-   ```bash
-   npm install socket.io
-   ```
-2. Adapter ton serveur dans `index.js` :
-   ```js
-   import { Server } from "socket.io";
-   import http from "http";
-   const server = http.createServer(app);
-   const io = new Server(server, { cors: { origin: "*" } });
-
-   io.on("connection", (socket) => {
-     console.log("User connected:", socket.id);
-     socket.on("message", (data) => io.emit("message", data));
-   });
-
-   server.listen(3000, () => console.log("🚀 Server running on port 3000"));
-   ```
-3. Créer un modèle `MessageModel.js` pour sauvegarder les messages en BDD.
-
-### 💡 Mini-défi  
-- Quelle différence entre HTTP et WebSocket ?  
-- Comment garantir la sécurité d’un chat temps réel ?  
+### 🎯 Objectif
+Mettre en place une **messagerie instantanée entre utilisateurs connectés**, en utilisant :
+- le serveur Express déjà existant (`config/server.js`)
+- l’authentification JWT déjà en place
+- **Socket.io** pour gérer la communication temps réel.
 
 ---
 
-## 🧹 Étape 6 – Middleware global, gestion d’erreurs & déploiement  
+### ⚙️ 1. Installation de Socket.io
 
-### Objectif  
-Rendre l’API robuste et prête à être déployée.
+Installe la dépendance :
 
-### Étapes  
-1. Créer un middleware `errorHandler.js` :
-   ```js
-   export const errorHandler = (err, req, res, next) => {
-     console.error(err.stack);
-     res.status(500).json({ message: "Internal Server Error" });
-   };
+```bash
+npm install socket.io
+```
+
+---
+
+### 🧩 2. Création du module Socket.io
+
+➡️ Dans le dossier `config/`, crée un nouveau fichier :  
+`config/socket.js`
+
+Ce fichier va gérer toute la logique Socket.io, tout en **réutilisant le serveur Express déjà créé** dans ton projet.
+
+**Exemple de structure :**
+
+```js
+// config/socket.js
+import { Server } from "socket.io";
+import jwt from "jsonwebtoken";
+import dotenv from "dotenv";
+dotenv.config();
+
+let io;
+
+export const initSocket = (server) => {
+  io = new Server(server, {
+    cors: {
+      origin: "*", // à adapter pour la prod
+      methods: ["GET", "POST"],
+    },
+  });
+
+  // Middleware d’authentification JWT
+  io.use((socket, next) => {
+    const token = socket.handshake.auth?.token;
+    if (!token) return next(new Error("Token manquant"));
+
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      socket.user = decoded; // on garde l’utilisateur dans la session socket
+      next();
+    } catch (err) {
+      console.error("JWT invalide :", err.message);
+      next(new Error("Token invalide"));
+    }
+  });
+
+  // Gestion des connexions utilisateurs
+  io.on("connection", (socket) => {
+    console.log(`✅ Utilisateur connecté : ${socket.user.email}`);
+
+    // Réception d’un message
+    socket.on("sendMessage", (data) => {
+      const message = {
+        sender: socket.user.email,
+        content: data.content,
+        timestamp: new Date(),
+      };
+
+      // Diffuse à tous les clients connectés
+      io.emit("newMessage", message);
+    });
+
+    // Déconnexion
+    socket.on("disconnect", () => {
+      console.log(`❌ ${socket.user.email} s'est déconnecté`);
+    });
+  });
+
+  console.log("💬 Socket.io initialisé");
+  return io;
+};
+
+export const getIO = () => {
+  if (!io) throw new Error("Socket.io non initialisé !");
+  return io;
+};
+```
+
+---
+
+### 🧱 3. Adapter `index.js`
+
+➡️ Ouvre ton fichier `index.js` et **remplace son contenu** par ce qui suit :
+
+```js
+import http from "http";
+import app from "./config/server.js";
+import { initSocket } from "./config/socket.js";
+
+// Création du serveur HTTP à partir d’Express
+const server = http.createServer(app);
+
+// Initialisation de Socket.io avec ce serveur
+initSocket(server);
+
+// Démarrage du serveur
+server.listen(3000, () => console.log("🚀 Server running on http://localhost:3000"));
+```
+
+💡 Ici, on garde le serveur Express inchangé, mais on le “surélève” pour qu’il supporte Socket.io.  
+Le module `config/socket.js` prend ensuite le relais pour gérer toute la logique temps réel.
+
+---
+
+### 🧠 4. Côté client : connexion avec le token JWT (via Postman)
+
+Tu peux tester ta messagerie **sans interface front-end**, directement depuis **Postman**, qui permet aussi de gérer les connexions **WebSocket**.
+
+---
+
+#### 🧩 Étape 1 – Obtenir un token JWT
+
+1. Lance ton API (`npm run dev`).
+2. Dans **Postman**, envoie une requête `POST` vers :
    ```
-   Et l’utiliser dans `index.js` :
-   ```js
-   app.use(errorHandler);
+   http://localhost:3000/api/login
    ```
-2. Ajouter un script de production :
+3. Fournis un corps JSON valide :
    ```json
-   "scripts": {
-     "start": "node index.js"
+   {
+     "email": "test@example.com",
+     "password": "123456"
    }
    ```
-3. Tester ton API avant le déploiement.
+4. Copie le **token JWT** reçu dans les headers `Authorization`
 
-### 💡 Mini-défi  
-- Qu’est-ce qu’un middleware global ?  
-- Quelles sont les bonnes pratiques avant de déployer une API REST ?  
+---
+
+#### 🧩 Étape 2 – Connexion au serveur Socket.io via Postman
+
+1. Ouvre un **nouvel onglet WebSocket** dans Postman.  
+   Clique sur **“New → WebSocket Request”**.
+2. Entre l’URL suivante :
+   ```
+   ws://localhost:3000
+   ```
+3. Clique sur **Headers → Auth** et ajoute :
+   ```json
+   {
+     "token": "TON_JWT_ICI"
+   }
+   ```
+   👉 Postman enverra automatiquement ce token dans le handshake WebSocket, comme ton serveur l’attend dans `socket.handshake.auth.token`.
+
+4. Clique sur **Connect**.  
+   Tu devrais voir dans ta console serveur :
+   ```
+   ✅ Utilisateur connecté : test@example.com
+   ```
+
+---
+
+#### 🧩 Étape 3 – Envoyer un message
+
+1. Une fois connecté, envoie un message au serveur en utilisant l’événement `sendMessage`.  
+   Dans Postman :
+   - Choisis le **type d’événement** : `sendMessage`
+   - Dans le corps JSON, ajoute :
+     ```json
+     {
+       "content": "Hello depuis Postman 👋"
+     }
+     ```
+
+2. Tu devrais voir la réponse côté serveur :
+   ```
+   💬 Nouveau message reçu : Hello depuis Postman 👋
+   ```
+
+3. Tous les clients WebSocket connectés recevront un événement `newMessage` contenant le message complet :
+   ```json
+   {
+     "sender": "test@example.com",
+     "content": "Hello depuis Postman 👋",
+     "timestamp": "2025-10-30T12:34:56.789Z"
+   }
+   ```
+
+---
+
+#### 🧩 Étape 4 – Tester plusieurs utilisateurs
+
+1. Connecte-toi dans **deux onglets WebSocket Postman différents**, chacun avec un token JWT différent.  
+2. Envoie un message depuis le premier compte :
+   ```json
+   {
+     "content": "Salut 👋"
+   }
+   ```
+3. Le second utilisateur devrait recevoir immédiatement ce message en temps réel.
+
+---
+
+✅ **Résultat attendu :**
+- Le serveur affiche chaque connexion/déconnexion d’utilisateur.
+- Les messages sont diffusés instantanément à tous les utilisateurs connectés avec un token valide.
+- Les connexions sans token ou avec un token invalide sont refusées par Socket.io.
+
+---
+
+💡 **Astuce :**
+Tu peux ouvrir la console “Messages” de Postman pour visualiser les événements entrants et sortants en temps réel.  
+C’est très pratique pour tester les échanges WebSocket sans front-end.
+
+---
+
+#### 🧩 5. Mise en pratique – Améliorations du système de messagerie
+
+##### 🎯 Objectif :
+À partir de la messagerie en temps réel déjà opérationnelle, tu vas enrichir ton système pour le rendre plus complet et réaliste.
+
+---
+
+#### 💾 1. Sauvegarde des messages en base de données
+
+**But :** conserver un historique des échanges dans une table `messages`.
+
+##### Étapes :
+1. Crée une table `messages` :
+   ```sql
+   CREATE TABLE messages (
+     id INT AUTO_INCREMENT PRIMARY KEY,
+     sender_id INT NOT NULL,
+     content TEXT NOT NULL,
+     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+     FOREIGN KEY (sender_id) REFERENCES users(id)
+   );
+   ```
+2. Crée un `MessageModel.js` dans le dossier `models/` :
+   - Ajoute une méthode `createMessage(senderId, content)` pour insérer un nouveau message.
+   - Ajoute une méthode `getRecentMessages(limit = 20)` pour récupérer les derniers messages.
+
+3. Dans le handler `sendMessage` de ton fichier `config/socket.js` :
+   - Récupère `socket.user.id` depuis le token JWT.
+   - Insère le message en BDD avant de le diffuser avec `io.emit("newMessage", message)`.
+
+🧠 *Exemple d’approche (sans code complet)* :
+```js
+const newMessage = await messageModel.createMessage(socket.user.id, data.content);
+io.emit("newMessage", newMessage);
+```
+
+---
+
+#### 🔒 2. Rooms et conversations privées
+
+**But :** permettre des discussions entre deux utilisateurs ou dans un groupe spécifique.
+
+##### Étapes :
+1. Lorsqu’un utilisateur se connecte, fais-le rejoindre une room unique :
+   ```js
+   socket.join(`user_${socket.user.id}`);
+   ```
+2. Crée un nouvel événement `sendPrivateMessage` :
+   - Il reçoit `{ recipientId, content }`.
+   - Le serveur envoie le message **seulement** dans la room du destinataire :
+     ```js
+     io.to(`user_${recipientId}`).emit("privateMessage", message);
+     ```
+3. (Optionnel) Enregistre ces messages dans une table `private_messages` similaire à celle des messages publics.
+
+💡 *Objectif : comprendre la logique des rooms et comment Socket.io isole les échanges.*
+
+---
+
+#### 🧱 3. Historique au chargement
+
+**But :** afficher les anciens messages lorsqu’un utilisateur ouvre la messagerie.
+
+##### Étapes :
+1. Lors de l’événement `connection`, récupère les 20 derniers messages :
+   ```js
+   const lastMessages = await messageModel.getRecentMessages();
+   socket.emit("previousMessages", lastMessages);
+   ```
+2. Côté client (Postman ou front), écoute l’événement `previousMessages` pour afficher l’historique.
+
+🧠 *Idée bonus :* trie les messages par `created_at` avant l’envoi.
+
+---
+
+#### 🚫 4. Sécurité renforcée
+
+**But :** s’assurer que seules les connexions valides restent actives.
+
+##### Étapes :
+1. Vérifie que le **token JWT** reste valide à chaque action sensible :
+   ```js
+   io.use((socket, next) => {
+     try {
+       const decoded = jwt.verify(socket.handshake.auth.token, process.env.JWT_SECRET);
+       socket.user = decoded;
+       next();
+     } catch {
+       return next(new Error("invalid or expired token"));
+     }
+   });
+   ```
+2. En cas d’erreur de validation, déconnecte immédiatement le client :
+   ```js
+   socket.disconnect(true);
+   ```
+
+---
+
+### ✅ Résultat attendu
+
+À la fin de cette mise en pratique, ton système de messagerie :
+- stocke les messages en BDD,  
+- permet des conversations privées,  
+- charge l’historique à la connexion,  
+- et gère la sécurité JWT en continu.
+  
+---
+
+## 🧹 Étape 6 – Middleware global, sécurité, gestion d’erreurs & déploiement  
+
+### 🎯 Objectif  
+Rendre ton API **robuste**, **sécurisée** et **prête à être déployée** en production.
+
+---
+
+### 🧰 1. Ajouter des middlewares de sécurité
+
+Avant toute chose, installe les bibliothèques nécessaires :
+
+```bash
+npm install helmet cors
+```
+
+#### 🪖 a. Protection des headers avec Helmet
+Helmet aide à sécuriser ton API en configurant automatiquement plusieurs en-têtes HTTP :
+
+```js
+import helmet from "helmet";
+app.use(helmet());
+```
+
+Helmet :
+- empêche certaines failles XSS,
+- masque les infos du serveur (`X-Powered-By`),
+- renforce la politique de contenu.
+
+> 💡 Tu peux personnaliser certaines options, par exemple :
+> ```js
+> app.use(helmet({
+>   crossOriginResourcePolicy: false,
+> }));
+> ```
+
+---
+
+#### 🌍 b. Gestion du CORS (Cross-Origin Resource Sharing)
+CORS permet à des applications front (par ex. React, Postman ou Socket.io) d’accéder à ton API.
+
+Installe et configure :
+```js
+import cors from "cors";
+app.use(cors({
+  origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
+  credentials: true,
+}));
+```
+
+> 💡 En production, restreins l’accès aux seuls domaines autorisés (ex: ton site déployé).
+
+---
+
+### 🧩 2. Gestion centralisée des erreurs
+
+Crée un middleware global `middlewares/errorHandler.js` :
+
+```js
+// middlewares/errorHandler.js
+export const errorHandler = (err, req, res, next) => {
+  console.error("🔥 Error:", err.stack || err.message);
+  
+  const statusCode = err.status || 500;
+  const message = err.message || "Internal Server Error";
+
+  res.status(statusCode).json({
+    success: false,
+    message,
+  });
+};
+```
+
+Dans `config/server.js`, **place-le après toutes tes routes** :
+
+```js
+import { errorHandler } from "../middlewares/errorHandler.js";
+app.use(errorHandler);
+```
+
+> 🧠 Ce middleware capture toutes les erreurs non gérées et renvoie une réponse JSON propre au client.
+
+---
+
+### ⚙️ 3. Variables d’environnement & configuration
+
+Assure-toi que ton projet utilise un fichier `.env` pour les données sensibles :
+```
+PORT=3000
+JWT_SECRET=superSecretKey
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=password
+DB_NAME=mds_social
+```
+
+Et récupère ces valeurs via `process.env` dans ton code :
+```js
+import dotenv from "dotenv";
+dotenv.config();
+```
+
+---
+
+### 🚀 4. Préparation au déploiement
+
+Ajoute un script dans ton `package.json` :
+
+```json
+"scripts": {
+  "dev": "nodemon index.js",
+  "start": "node index.js"
+}
+```
+
+Avant le déploiement :
+1. **Teste ton API localement** avec Postman et vérifie que tout fonctionne.
+2. **Désactive** les logs inutiles (`console.log` massifs, par exemple).
+3. **Active** un niveau de logs clair (par exemple via `winston`).
+4. **Vérifie** que tes erreurs sont bien gérées par le middleware `errorHandler`.
+5. **Teste la sécurité** avec un outil comme [OWASP ZAP](https://www.zaproxy.org/).
+
+---
+
+### 🧠 Mini-défi  
+
+- Qu’est-ce qu’un middleware global et dans quel ordre doit-il être chargé ?  
+- Pourquoi est-il important de restreindre le CORS en production ?  
+- Quelles autres mesures de sécurité peux-tu ajouter avant un déploiement (indices : rate limiting, sanitization, logging...) ?
+
+---
+
+### ✅ Résultat attendu
+Ton API :
+- applique automatiquement des **headers de sécurité** avec Helmet,  
+- autorise uniquement les **origines approuvées** avec CORS,  
+- capture toutes les erreurs serveur dans un **middleware global**,  
+- et peut être **déployée en production** sereinement.
 
 ---
 
