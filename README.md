@@ -683,9 +683,7 @@ Tu peux tester ta messagerie **sans interface front-end**, directement depuis **
 
 1. Télécharge (Insomnia)[https://insomnia.rest/download]
 
-Ajoute le plugin “insomnia-plugin-socketio”
-
-Crée une nouvelle requête → type Socket.io
+2. Va dans préferences puis plugins et ajoute le plugin “insomnia-plugin-socketio”
 
 #### 🧩 Étape 1 – Obtenir un token JWT
 
