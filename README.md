@@ -673,11 +673,19 @@ Le module `config/socket.js` prend ensuite le relais pour gérer toute la logiqu
 
 ---
 
-### 🧠 4. Côté client : connexion avec le token JWT (via Postman)
+### 🧠 4. Côté client : connexion avec le token JWT (via Insomnia)
 
-Tu peux tester ta messagerie **sans interface front-end**, directement depuis **Postman**, qui permet aussi de gérer les connexions **WebSocket**.
+Tu peux tester ta messagerie **sans interface front-end**, directement depuis **Insomnia**, qui permet aussi de gérer les connexions **WebSocket**.
 
 ---
+
+#### Etape 0 - Installation d'insomnia et du plugin socketio
+
+1. Télécharge (Insomnia)[https://insomnia.rest/download]
+
+Ajoute le plugin “insomnia-plugin-socketio”
+
+Crée une nouvelle requête → type Socket.io
 
 #### 🧩 Étape 1 – Obtenir un token JWT
 
@@ -697,21 +705,21 @@ Tu peux tester ta messagerie **sans interface front-end**, directement depuis **
 
 ---
 
-#### 🧩 Étape 2 – Connexion au serveur Socket.io via Postman
+#### 🧩 Étape 2 – Connexion au serveur Socket.io via Insomnia
 
-1. Ouvre un **nouvel onglet WebSocket** dans Postman.  
-   Clique sur **“New → WebSocket Request”**.
+1. Ouvre un **nouvel onglet Socket.io** dans Postman.  
+   Clique sur **“New → Socket.io”**.
 2. Entre l’URL suivante :
    ```
    ws://localhost:3000
    ```
-3. Clique sur **Headers → Auth** et ajoute :
+3. Clique sur **Headers** et ajoute :
    ```json
    {
      "token": "TON_JWT_ICI"
    }
    ```
-   👉 Postman enverra automatiquement ce token dans le handshake WebSocket, comme ton serveur l’attend dans `socket.handshake.auth.token`.
+   👉 Insomnia enverra automatiquement ce token dans le handshake WebSocket, comme ton serveur l’attend dans `socket.handshake.auth.token`.
 
 4. Clique sur **Connect**.  
    Tu devrais voir dans ta console serveur :
@@ -724,7 +732,7 @@ Tu peux tester ta messagerie **sans interface front-end**, directement depuis **
 #### 🧩 Étape 3 – Envoyer un message
 
 1. Une fois connecté, envoie un message au serveur en utilisant l’événement `sendMessage`.  
-   Dans Postman :
+   Dans Insomnia :
    - Choisis le **type d’événement** : `sendMessage`
    - Dans le corps JSON, ajoute :
      ```json
@@ -735,7 +743,7 @@ Tu peux tester ta messagerie **sans interface front-end**, directement depuis **
 
 2. Tu devrais voir la réponse côté serveur :
    ```
-   💬 Nouveau message reçu : Hello depuis Postman 👋
+   💬 Nouveau message reçu : Hello depuis Insomnia 👋
    ```
 
 3. Tous les clients WebSocket connectés recevront un événement `newMessage` contenant le message complet :
@@ -751,7 +759,7 @@ Tu peux tester ta messagerie **sans interface front-end**, directement depuis **
 
 #### 🧩 Étape 4 – Tester plusieurs utilisateurs
 
-1. Connecte-toi dans **deux onglets WebSocket Postman différents**, chacun avec un token JWT différent.  
+1. Connecte-toi dans **deux onglets WebSocket Insomnia différents**, chacun avec un token JWT différent.  
 2. Envoie un message depuis le premier compte :
    ```json
    {
