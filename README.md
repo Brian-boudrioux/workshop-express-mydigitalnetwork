@@ -775,20 +775,21 @@ C’est très pratique pour tester les échanges WebSocket sans front-end.
 
 ---
 
-#### 🧩 5. Mise en pratique – Améliorations du système de messagerie
+### 🧩 5. Challenge – Améliorations du système de messagerie
 
-##### 🎯 Objectif :
-À partir de la messagerie en temps réel déjà opérationnelle, tu vas enrichir ton système pour le rendre plus complet et réaliste.
+#### 🎯 Objectif :
+Faire évoluer le système de messagerie vers un modèle **entièrement privé et sécurisé**, où chaque message est adressé à un destinataire précis, sauvegardé en base de données et accessible uniquement par les utilisateurs concernés.
 
 ---
 
-##### 💾 1. Sauvegarde des messages privés en base de données
+#### 💾 1. Sauvegarde des messages privés en base de données
 
-But : conserver un historique des échanges privés entre deux utilisateurs.
+**But :** conserver l’historique complet des échanges privés entre utilisateurs.
 
-Étapes :
-1. Crée une table messages :
-   CREATE TABLE messages (
+##### Étapes :
+1. Crée une table `private_messages` :
+   ```sql
+   CREATE TABLE private_messages (
      id INT AUTO_INCREMENT PRIMARY KEY,
      sender_id INT NOT NULL,
      receiver_id INT NOT NULL,
@@ -797,99 +798,87 @@ But : conserver un historique des échanges privés entre deux utilisateurs.
      FOREIGN KEY (sender_id) REFERENCES users(id),
      FOREIGN KEY (receiver_id) REFERENCES users(id)
    );
-   Cette structure permet de savoir qui envoie et qui reçoit chaque message.
-
-2. Crée un fichier MessageModel.js dans le dossier models/ :
-   - Ajoute une méthode createMessage(senderId, receiverId, content) pour insérer un message privé.
-   - Ajoute une méthode getConversation(senderId, receiverId, limit = 20) pour récupérer les derniers messages échangés entre deux utilisateurs.
-
-3. Dans ton handler sendPrivateMessage du fichier config/socket.js :
-   - Récupère socket.user.id depuis le token JWT (vérifié à la connexion).
-   - Sauvegarde le message dans la BDD.
-   - Émets-le uniquement vers le destinataire (receiverId) et vers l’expéditeur pour la confirmation.
-
-Exemple d’approche :
-const { receiverId, content } = data;
-const newMessage = await messageModel.createMessage(socket.user.id, receiverId, content);
-io.to(`user_${receiverId}`).emit("privateMessage", newMessage);
-io.to(`user_${socket.user.id}`).emit("privateMessageSent", newMessage);
-
----
-
-##### 🔒 2. Rooms et conversations privées
-
-But : isoler les discussions entre utilisateurs pour que seuls les concernés reçoivent les messages.
-
-Étapes :
-1. Lorsqu’un utilisateur se connecte :
-   - Récupère son ID à partir du token JWT.
-   - Fais-le rejoindre sa propre room :
-     socket.join(`user_${socket.user.id}`);
-   Cela permet au serveur d’envoyer des messages ciblés uniquement à cet utilisateur.
-
-2. Crée un événement sendPrivateMessage :
-   - Il reçoit { receiverId, content } du client.
-   - Le serveur :
-     - Vérifie que receiverId existe.
-     - Enregistre le message.
-     - Envoie le message uniquement à la room du destinataire.
-
-3. (Optionnel) Lors de la connexion d’un utilisateur :
-   - Renvoie les 20 derniers messages de sa dernière conversation :
-     const history = await messageModel.getConversation(socket.user.id, receiverId);
-     socket.emit("previousMessages", history);
-
-Objectif : comprendre la logique des rooms Socket.io et comment isoler les conversations entre utilisateurs authentifiés.
-
----
-
-##### 🧱 3. Historique au chargement
-
-**But :** afficher les anciens messages lorsqu’un utilisateur ouvre la messagerie.
-
-###### Étapes :
-1. Lors de l’événement `connection`, récupère les 20 derniers messages :
-   ```js
-   const lastMessages = await messageModel.getRecentMessages();
-   socket.emit("previousMessages", lastMessages);
    ```
-2. Côté client (Postman ou front), écoute l’événement `previousMessages` pour afficher l’historique.
+2. Crée un fichier `models/MessageModel.js` :
+   - Ajoute une méthode `createPrivateMessage(senderId, receiverId, content)` pour enregistrer un message.
+   - Ajoute une méthode `getConversation(senderId, receiverId)` pour récupérer les messages entre deux utilisateurs.
 
-🧠 *Idée bonus :* trie les messages par `created_at` avant l’envoi.
+3. Dans le handler `sendPrivateMessage` du fichier `config/socket.js` :
+   - Récupère l’`id` de l’utilisateur connecté via `socket.user`.
+   - Insère le message en BDD avant de le transmettre uniquement à la room du destinataire.
+
+🧠 *Exemple d’approche* :
+```js
+const message = await messageModel.createPrivateMessage(socket.user.id, data.receiverId, data.content);
+io.to(`user_${data.receiverId}`).emit("privateMessage", message);
+```
 
 ---
 
-##### 🚫 4. Sécurité renforcée
+#### 🔒 2. Rooms et communication privée
 
-**But :** s’assurer que seules les connexions valides restent actives.
+**But :** garantir que chaque utilisateur ne reçoive que les messages qui lui sont destinés.
 
-###### Étapes :
-1. Vérifie que le **token JWT** reste valide à chaque action sensible :
+##### Étapes :
+1. Lorsqu’un utilisateur se connecte :
+   - Authentifie le via son token JWT.
+   - Fais-le rejoindre une room spécifique à son ID :
+     ```js
+     socket.join(`user_${socket.user.id}`);
+     ```
+2. Crée un événement `sendPrivateMessage` :
+   - L’événement reçoit `{ receiverId, content }`.
+   - Le serveur sauvegarde le message puis l’envoie uniquement à la room du destinataire.
+3. Ajoute un événement `getConversation` pour récupérer les anciens messages entre deux utilisateurs :
    ```js
-   io.use((socket, next) => {
-     try {
-       const decoded = jwt.verify(socket.handshake.auth.token, process.env.JWT_SECRET);
-       socket.user = decoded;
-       next();
-     } catch {
-       return next(new Error("invalid or expired token"));
-     }
+   socket.on("getConversation", async (receiverId) => {
+     const messages = await messageModel.getConversation(socket.user.id, receiverId);
+     socket.emit("conversationHistory", messages);
    });
    ```
-2. En cas d’erreur de validation, déconnecte immédiatement le client :
-   ```js
-   socket.disconnect(true);
-   ```
+
+💡 *Astuce :* Les rooms Socket.io permettent d’isoler les échanges de manière très simple et efficace.
 
 ---
 
-### ✅ Résultat attendu
+#### 🧱 3. Chargement de l’historique au moment de la connexion
+
+**But :** offrir à l’utilisateur la possibilité de consulter ses anciennes conversations dès sa connexion.
+
+##### Étapes :
+1. Lors de la connexion d’un utilisateur (`io.on("connection")`), récupère ses dernières conversations :
+   ```js
+   const messages = await messageModel.getRecentMessagesForUser(socket.user.id);
+   socket.emit("previousMessages", messages);
+   ```
+2. Côté client (via Postman WebSocket ou interface web), écoute l’événement `previousMessages` pour afficher l’historique.
+
+---
+
+#### 🚫 4. Sécurité renforcée
+
+**But :** sécuriser les échanges et prévenir tout accès non autorisé.
+
+##### Étapes :
+1. Vérifie le **token JWT** à chaque connexion Socket.io (dans ton middleware ou dès la phase d’authentification).
+2. Déconnecte automatiquement les utilisateurs dont le token est invalide ou expiré.
+
+---
+
+#### ✅ Résultat attendu
 
 À la fin de cette mise en pratique, ton système de messagerie :
 - stocke les messages en BDD,  
 - permet des conversations privées,  
 - charge l’historique à la connexion,  
 - et gère la sécurité JWT en continu.
+
+---
+
+#### 🧠 Bonus :
+- Ajouter un système de **notifications** quand un nouveau message privé arrive.
+- Permettre la **suppression** d’un message par l’expéditeur.
+- Implémenter un indicateur “vu / non vu” côté client.
   
 ---
 
